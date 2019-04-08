@@ -1,0 +1,320 @@
+Servlet经典的应用就是用在MVC设计模式上了。
+MVC设计模式分为3个核心层：
+1. 显示层（view）:主要负责接收Servlet传递过来的数据，并且调用JAvaBean，将内容显示给用户。
+
+2. 控制层（Controller）:主要负责所有的用户请求参数，判断请求参数是否合法。根据请求参数是否合法，根据请求的类型调用JavaBean执行操作并将最后的结果交给显示层显示。
+
+3. 模型层（Model)：完成一个独立的业务操作组件，一般都是以JavaBean或EJB的形式进行的定义。
+
+设计思路：
+用户的登录信息交给Servlet进行接收，由Servlet进行合法性验证，如果验证错误（输入的内容不合法），在跳转到登录页面重新登录验证，如果数据正确，则调用DAO层完成数据库的验证，如果验证通过则跳转到登录成功的页面，反之跳转到登录失败的页面。
+
+MySQL数据库：
+
+USE mldn;
+ DROP TABLE IF EXISTS user;
+ 
+ CREATE TABLE user(
+	userid  VARCHAR(30) PRIMARY KEY,
+	name  VARCHAR(30) NOT NULL,
+	password VARCHAR(32) NOT NULL
+ )
+ 
+ SELECT *from user;
+ 
+ INSERT INTO user(userid,name,password) VALUES ('admin','administrator','admin');
+
+VO类：主要有属性、setter、getter方法组成，VO类的属性和表中的字段相对应，每一个VO类的对象都表示表中的每一条记录。
+
+package org.czh.mvcdemo.vo;
+/*VO类，有属性，set和get方法组成*/
+public class User {
+    private String userid;/*对应userid列*/
+    private String name;/*对应name列*/
+    private String password;/*对应password列*/
+
+    public String getUserid() {
+        return userid;
+    }
+
+    public void setUserid(String userid) {
+        this.userid = userid;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+}
+
+DatabaseConnection类：专门负责数据库的打开和关闭操作：
+
+package org.czh.mvcdemo.dbc;
+/*定义数据库类，负责数据库的打开和关闭，具体注释请看我的上一篇博客*/
+import java.sql.Connection;
+import java.sql.DriverManager;
+
+public class DatabaseConnection {
+    private static final String DBDRIVER = "com.mysql.jdbc.Driver";
+    private static final String DBURL = "jdbc:mysql://localhost/mldn?useSSL=false";
+    private static final String DBUSER = "root";
+    private static final String DBPASSWORD = "1234";
+
+    private Connection conn = null;
+
+    public DatabaseConnection() throws Exception {
+        try {
+            Class.forName(DBDRIVER);
+            this.conn = DriverManager.getConnection(DBURL, DBUSER, DBPASSWORD);
+        } catch (Exception e) {
+            throw e;
+        }
+    }
+
+    public Connection getConnection() {
+        return this.conn;
+    }
+
+    public void close() throws Exception {
+        if (this.conn != null) {
+            try {
+                this.conn.close();
+            } catch (Exception e) {
+                throw e;
+            }
+        }
+    }
+}
+DAO接口：主要定义操作的接口，定义一系列数据库的原子性操作标准，如增加，修改，删除，按ID查询等。
+
+package org.czh.mvcdemo.dao;
+
+import org.czh.mvcdemo.vo.User;
+/*登录验证*/
+public interface IUserDAO {
+
+    public boolean findLogin(User user) throws Exception;
+}
+Impl类：DAO的真实实现类，完成具体的数据库的操作，但是不负责数据库的打开和关闭。
+
+package org.czh.mvcdemo.dao.impl;
+/*具体注释请看我的上一篇博客*/
+import org.czh.mvcdemo.dao.IUserDAO;
+import org.czh.mvcdemo.vo.User;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+
+public class UserDAOImpl implements IUserDAO {
+    private Connection conn = null;
+    private PreparedStatement pstmt = null;
+
+    public UserDAOImpl(Connection conn) {
+        this.conn = conn;
+    }
+
+    public boolean findLogin(User user) throws Exception {
+        boolean flag = false;
+        try {
+            String sql = "SELECT name FROM user WHERE userid = ? AND password = ?";
+            this.pstmt = this.conn.prepareStatement(sql);
+            this.pstmt.setString(1, user.getUserid());
+            this.pstmt.setString(2, user.getPassword());
+            ResultSet rs = this.pstmt.executeQuery();
+            if (rs.next()) {
+                user.setName(rs.getString(1));
+                flag = true;
+            }
+        } catch (Exception e) {
+            throw e;
+        }finally {
+            if (this.pstmt != null) {
+                try {
+                    this.pstmt.close();
+                } catch (Exception e) {
+                    throw e;
+                }
+            }
+        }
+        return flag;
+    }
+}
+Proxy类：代理实现类，主要完成数据库的打开和关闭，并且调用真实实现类对象的操作。
+
+package org.czh.mvcdemo.dao.proxy;
+
+import org.czh.mvcdemo.dao.IUserDAO;
+import org.czh.mvcdemo.dao.impl.UserDAOImpl;
+import org.czh.mvcdemo.dbc.DatabaseConnection;
+import org.czh.mvcdemo.vo.User;
+
+public class UserDAOProxy implements IUserDAO {
+    private DatabaseConnection dbc = null;
+    private IUserDAO dao = null;/*定义DAO接口*/
+    public UserDAOProxy() {
+        try {
+            this.dbc = new DatabaseConnection();/*实例化数据库连接*/
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        this.dao = new UserDAOImpl(this.dbc.getConnection());
+    }
+
+    public boolean findLogin(User user) throws Exception {
+        boolean flag = false;
+        try {
+            flag = this.dao.findLogin(user);/*调用真实主题*/
+        } catch (Exception e) {
+            throw e;   /*throw要么和try-catch语句一起用，放在try中，要么和throws一起用，不能单独使用*/
+        } finally {
+           this.dbc.close();
+        }
+        return flag;
+    }
+}
+Factory类：工厂类，通过工厂类取得一个DAO的实例化对象
+
+package org.czh.mvcdemo.factory;
+
+import org.czh.mvcdemo.dao.IUserDAO;
+import org.czh.mvcdemo.dao.proxy.UserDAOProxy;
+
+public class DAOFactory {
+    public static IUserDAO getIUserDAOInstance() {
+        return new UserDAOProxy();/*返回代理实例*/
+    }
+}
+Servlet：接受客户端发来的数据，同时要调用DAO，并且要根据DAO的结果返回相应的信息。
+
+package org.czh.mvcdemo.servlet;
+/*用servlet完成控制层*/
+import org.czh.mvcdemo.factory.DAOFactory;
+import org.czh.mvcdemo.vo.User;
+
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+@javax.servlet.annotation.WebServlet(name = "Servlet")
+public class LoginServlet extends HttpServlet {
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        this.doGet(request, response);/*调用doGet操作*/
+    }
+
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        String path = "index.jsp";
+        String userid = request.getParameter("userid");/*接收userid内容*/
+        String userpass = request.getParameter("userpass");/*接收userpass内容*/
+        List<String> info = new ArrayList<>();/*保存所有返回信息*/
+        if (userid == null || "".equals(userid)) {
+            info.add("用户id不能为空");/*增加错误信息1*/
+        }
+        if (userpass == null || "".equals(userpass)) {      /*先判断是不是对象，如果是，再判断是不是空字符串*/
+            info.add("用户密码不能为空");/*增加错误信息*/
+        }
+        if (info.size() == 0) {/*用户名和密码验证通过*/
+            User user = new User();/*实例化VO*/
+            user.setUserid(userid);/*设置userid*/
+            user.setPassword(userpass);/*设置password*/
+            try {
+                if (DAOFactory.getIUserDAOInstance().findLogin(user)) {/*验证通过*/
+                    info.add("用户登录成功，欢迎" + user.getName() + "光临！");
+                } else {
+                    info.add("用户登录失败，错误的用户名或密码！");
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            request.setAttribute("info", info);/*保存错误信息*/
+            request.getRequestDispatcher(path).forward(request, response);/*跳转*/
+        }
+    }
+}
+登录页：index.jsp
+
+<%@ page import="java.util.List" %>
+<%@ page import="java.util.ArrayList" %>
+<%@ page import="java.util.Iterator" %>
+ <%--
+  Created by IntelliJ IDEA.
+  User: Chenzh
+  Date: 2019/2/25
+  Time: 14:01
+  To change this template use File | Settings | File Templates.
+--%>
+<%@ page contentType="text/html;charset=UTF-8" language="java" %>
+<html>
+  <head>
+    <title>$Title$</title>
+  </head>
+  <script language="JavaScript">
+    function vaildate(f) {
+      if (!(/^\w{5,15}$/.test(f.userid.value))) {
+        alert("用户ID必须是5-15位！");
+        f.userid.focus();
+        return false;
+      }
+      if (!(/^\w{5,15}$/.test(f.userpass.value))) {
+        alert("密码必须是5-15位！");
+        f.userid.focus();
+        return false;
+      }
+      return true;
+    }
+  </script>
+  <body>
+   <h2>用户登录程序</h2>
+  <%
+    request.setCharacterEncoding("GBK");/*乱码处理*/
+  %>
+  <%
+    List<String> info = (List<String>) request.getAttribute("info");/*取得属性*/
+    if (info != null) {
+      Iterator<String> iter = info.iterator();
+      while (iter.hasNext()) {
+  %>
+   <h4><%=iter.next()%></h4>
+  <%
+      }
+    }
+  %>
+  <form action="LoginServlet" method="post" onsubmit="return vaildate(this)">
+    用户ID：<input type="text" name = "userid"><br/>
+    密&nbsp;&nbsp;码<input type="password" name="userpass"><br/>
+    <input type="submit" value="登录">
+    <input type="reset" value="重置">
+  </form>
+  </body>
+</html>
+配置web.xml
+
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
+         version="4.0">
+    <servlet>
+        <servlet-name>login</servlet-name><!--定义servlet-->
+        <servlet-class>org.czh.mvcdemo.servlet.LoginServlet</servlet-class><!--定义包名.类名-->
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>login</servlet-name><!--映射路径-->
+        <url-pattern>/LoginServlet</url-pattern><!--页面的映射路径-->
+    </servlet-mapping>
+</web-app>

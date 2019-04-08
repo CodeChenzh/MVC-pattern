@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
+         version="4.0">
+    <servlet>
+        <servlet-name>login</servlet-name><!--定义servlet-->
+        <servlet-class>org.czh.mvcdemo.servlet.LoginServlet</servlet-class><!--定义包名.类名-->
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>login</servlet-name><!--映射路径-->
+        <url-pattern>/LoginServlet</url-pattern><!--页面的映射路径-->
+    </servlet-mapping>
+</web-app>
